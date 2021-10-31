@@ -31,7 +31,16 @@ except NameError:
   unichr = chr
 
 
+MYPY = False
+if MYPY:
+  from typing import Any, Callable, List, Optional, Sequence, Union
+  from os import PathLike
+  _T_path = Union[basestring, bytes, PathLike[basestring], PathLike[bytes]]
+
+
+
 def include(f):
+  # type: (_T_path) -> text
   '''
   includes the contents of a file on disk.
   takes a filename
@@ -43,6 +52,7 @@ def include(f):
 
 
 def system(cmd, data=None):
+  # type: (Union[basestring, bytes, Sequence[_T_path]], Optional[bytes]) -> basestring
   '''
   pipes the output of a program
   '''
@@ -53,6 +63,7 @@ def system(cmd, data=None):
 
 
 def escape(data, quote=True):  # stolen from std lib cgi
+  # type: (basestring, bool) -> basestring
   '''
   Escapes special characters into their html entities
   Replace special characters "&", "<" and ">" to HTML-safe sequences.
@@ -83,6 +94,7 @@ str_escape = escape
 
 
 def unescape(data):
+  # type: (basestring) -> basestring
   '''
   unescapes html entities. the opposite of escape.
   '''
@@ -92,9 +104,9 @@ def unescape(data):
   m = cc.search(data)
   while m:
     result.append(data[0:m.start()])
-    d = m.group(1)
-    if d:
-      d = int(d)
+    d_ = m.group(1)
+    if d_:
+      d = int(d_)
       result.append(unichr(d))
     else:
       d = _unescape.get(m.group(2), ord('?'))
@@ -112,10 +124,12 @@ _replace_map = dict((c, '%%%2X' % ord(c)) for c in _reserved)
 
 
 def url_escape(data):
+  # type: (basestring) -> basestring
   return ''.join(_replace_map.get(c, c) for c in data)
 
 
 def url_unescape(data):
+  # type: (basestring) -> basestring
   return re.sub('%([0-9a-fA-F]{2})',
     lambda m: unichr(int(m.group(1), 16)), data)
 
@@ -135,6 +149,7 @@ class lazy(dom_tag):
     return object.__new__(_cls)
 
   def __init__(self, func, *args, **kwargs):
+    # type: (Callable[..., Any], *Any, **Any) -> None
     super(lazy, self).__init__()
     self.func   = func
     self.args   = args
@@ -142,8 +157,10 @@ class lazy(dom_tag):
 
 
   def _render(self, sb, *a, **kw):
+    # type: (List[basestring], *Any, **Any) -> List[basestring]
     r = self.func(*self.args, **self.kwargs)
     sb.append(str(r))
+    return sb
 
 
 # TODO rename this to raw?
@@ -155,6 +172,7 @@ class text(dom_tag):
   is_inline = True
 
   def __init__(self, _text, escape=True):
+    # type: (basestring, bool) -> None
     super(text, self).__init__()
     if escape:
       self.text = str_escape(_text)
@@ -162,11 +180,13 @@ class text(dom_tag):
       self.text = _text
 
   def _render(self, sb, *a, **kw):
+    # type: (List[basestring], *Any, **Any) -> List[basestring]
     sb.append(self.text)
     return sb
 
 
 def raw(s):
+  # type: (basestring) -> text
   '''
   Inserts a raw string into the DOM. Unsafe.
   '''
