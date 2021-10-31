@@ -24,9 +24,19 @@ except NameError: # py3
   basestring = str
   unicode = str
 
+
+from typing import overload
+MYPY = False
+if MYPY:
+  from typing import Any, Tuple, Union
+  from .dom_tag import T_tag, T1_tag, dom_tag
+
+
 class document(tags.html):
   tagname = 'html'
   def __init__(self, title='Dominate', doctype='<!DOCTYPE html>', request=None):
+    # type: (Union[dom_tag, basestring], basestring, Any) -> None
+
     '''
     Creates a new document instance. Accepts `title`, `doctype`, and `request` keyword arguments.
     '''
@@ -38,9 +48,11 @@ class document(tags.html):
     self._entry     = self.body
 
   def get_title(self):
-    return self.title_node.text
+    # type: () -> basestring
+    return self.title_node.text  # type: ignore[no-any-return]
 
   def set_title(self, title):
+    # type: (Union[basestring, tags.title]) -> None
     if isinstance(title, basestring):
       self.title_node.text = title
     else:
@@ -50,13 +62,23 @@ class document(tags.html):
 
   title = property(get_title, set_title)
 
+  @overload
+  def add(self, __arg1):
+    # type: (T1_tag) -> T1_tag
+    pass
+  @overload
   def add(self, *args):
+    # type: (T_tag) -> Union[T_tag, Tuple[T_tag, ...]]
+    pass
+  def add(self, *args):
+    # type: (T_tag) -> Union[T_tag, Tuple[T_tag, ...]]
     '''
     Adding tags to a document appends them to the <body>.
     '''
     return self._entry.add(*args)
 
   def render(self, *args, **kwargs):
+    # type: (*Any, **Any) -> basestring
     '''
     Creates a <title> tag if not present and renders the DOCTYPE and tag tree.
     '''
@@ -72,4 +94,5 @@ class document(tags.html):
   __str__ = __unicode__ = render
 
   def __repr__(self):
+    # type: () -> basestring
     return '<dominate.document "%s">' % self.title

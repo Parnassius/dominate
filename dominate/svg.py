@@ -7,6 +7,12 @@ from dominate.tags import html_tag
 from dominate.dom_tag import dom_tag
 import numbers
 
+try:
+  basestring = basestring
+except NameError: # py3
+  basestring = str
+  unicode = str
+
 
 __license__ = '''
 This file is part of Dominate.
@@ -59,6 +65,7 @@ DASHED_ATTRIBUTES = set([
 class svg_tag(html_tag):
   @staticmethod
   def clean_attribute(attribute):
+    # type: (basestring) -> basestring
     attribute = html_tag.clean_attribute(attribute)
     words = attribute.split('_')
     if words[0] in DASHED_ATTRIBUTES:

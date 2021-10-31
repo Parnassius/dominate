@@ -58,5 +58,8 @@ setup(
   ],
 
   packages = ['dominate'],
+  install_requires=[
+    'typing_extensions ; python_version < "3.8"'
+  ],
   include_package_data = True,
 )

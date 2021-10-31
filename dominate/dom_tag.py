@@ -20,16 +20,10 @@ Public License along with Dominate.  If not, see
 
 import copy
 import numbers
-from collections import defaultdict, namedtuple
+from collections import defaultdict
 from functools import wraps
 import threading
-
-try:
-  # Python 3
-  from collections.abc import Callable
-except ImportError:
-  # Python 2.7
-  from collections import Callable
+import sys
 
 try:
   basestring = basestring
@@ -39,12 +33,28 @@ except NameError: # py3
 
 
 try:
-  import greenlet
+  import greenlet  # type: ignore[import]
 except ImportError:
   greenlet = None
 
 
+if sys.version_info >= (3, 8):
+  from typing import Literal
+else:
+  from typing_extensions import Literal
+from typing import Callable, Dict, Iterable, List, NamedTuple, Set, Tuple, Type, Union, cast, overload
+_T_tag = Union[float, basestring, 'dom_tag', Dict[basestring, Union[basestring, bool]]]
+MYPY = False
+if MYPY:
+  from typing import Any, Iterator, Optional, TypeVar
+  from . import tags
+  T = TypeVar("T", bound=object)
+  T_tag = Union[_T_tag, Iterable[_T_tag]]
+  T1_tag = TypeVar("T1_tag", int, float, basestring, tags.title, dom_tag, Dict[basestring, Union[basestring, bool]], Iterable[_T_tag])
+
+
 def _get_thread_context():
+  # type: () -> int
   context = [threading.current_thread()]
   if greenlet:
     context.append(greenlet.getcurrent())
@@ -78,6 +88,7 @@ class dom_tag(object):
 
 
   def __init__(self, *args, **kwargs):
+    # type: (*Union[dom_tag, basestring], **Union[basestring, bool]) -> None
     '''
     Creates a new tag. Child tags should be passed as arguments and attributes
     should be passed as keyword arguments.
@@ -88,14 +99,14 @@ class dom_tag(object):
                    line.
     '''
 
-    self.attributes = {}
-    self.children   = []
-    self.parent     = None
+    self.attributes = {}  # type: Dict[basestring, Union[basestring, Literal[False]]]
+    self.children   = []  # type: List[Union[dom_tag, basestring]]
+    self.parent     = None  # type: Optional[dom_tag]
     self.document   = None
 
     # Does not insert newlines on all children if True (recursive attribute)
-    self.is_inline = kwargs.pop('__inline', self.is_inline)
-    self.is_pretty = kwargs.pop('__pretty', self.is_pretty)
+    self.is_inline = kwargs.pop('__inline', self.is_inline)  # type: ignore[assignment]
+    self.is_pretty = kwargs.pop('__pretty', self.is_pretty)  # type: ignore[assignment]
 
     #Add child elements
     if args:
@@ -104,16 +115,17 @@ class dom_tag(object):
     for attr, value in kwargs.items():
       self.set_attribute(*type(self).clean_pair(attr, value))
 
-    self._ctx = None
+    self._ctx = None  # type: Any
     self._add_to_ctx()
 
 
   # context manager
-  frame = namedtuple('frame', ['tag', 'items', 'used'])
+  frame = NamedTuple('frame', [('tag', 'dom_tag'), ('items', List['dom_tag']), ('used', Set['dom_tag'])])
   # stack of frames
-  _with_contexts = defaultdict(list)
+  _with_contexts = defaultdict(list)  # type: Dict[int, List[frame]]
 
   def _add_to_ctx(self):
+    # type: () -> None
     stack = dom_tag._with_contexts.get(_get_thread_context())
     if stack:
       self._ctx = stack[-1]
@@ -121,12 +133,14 @@ class dom_tag(object):
 
 
   def __enter__(self):
+    # type: () -> dom_tag
     stack = dom_tag._with_contexts[_get_thread_context()]
     stack.append(dom_tag.frame(self, [], set()))
     return self
 
 
   def __exit__(self, type, value, traceback):
+    # type: (Any, Any, Any) -> None
     thread_id = _get_thread_context()
     stack = dom_tag._with_contexts[thread_id]
     frame = stack.pop()
@@ -138,6 +152,7 @@ class dom_tag(object):
 
 
   def __call__(self, func):
+    # type: (Callable[..., Any]) -> Callable[..., Any]
     '''
     tag instance is being used as a decorator.
     wrap func to make a copy of this tag
@@ -149,6 +164,7 @@ class dom_tag(object):
 
     @wraps(func)
     def f(*args, **kwargs):
+      # type: (*Any, **Any) -> Any
       tag = copy.deepcopy(self)
       tag._add_to_ctx()
       with tag:
@@ -156,13 +172,24 @@ class dom_tag(object):
     return f
 
 
+  @overload
   def set_attribute(self, key, value):
+    # type: (int, Union[dom_tag, basestring]) -> None
+    pass
+  @overload
+  def set_attribute(self, key, value):
+    # type: (basestring, Union[basestring, Literal[False]]) -> None
+    pass
+  def set_attribute(self, key, value):
+    # type: (Union[int, basestring], Union[dom_tag, basestring, Literal[False]]) -> None
     '''
     Add or update the value of an attribute.
     '''
     if isinstance(key, int):
+      value = cast(Union[dom_tag, basestring], value)
       self.children[key] = value
     elif isinstance(key, basestring):
+      value = cast(Union[basestring, Literal[False]], value)
       self.attributes[key] = value
     else:
       raise TypeError('Only integer and string types are valid for assigning '
@@ -170,6 +197,7 @@ class dom_tag(object):
   __setitem__ = set_attribute
 
   def delete_attribute(self, key):
+    # type: (Union[int, basestring]) -> None
     if isinstance(key, int):
       del self.children[key:key+1]
     else:
@@ -177,6 +205,7 @@ class dom_tag(object):
   __delitem__ = delete_attribute
 
   def setdocument(self, doc):
+    # type: (Any) -> None
     '''
     Creates a reference to the parent document to allow for partial-tree
     validation.
@@ -189,7 +218,16 @@ class dom_tag(object):
         i.setdocument(doc)
 
 
+  @overload
+  def add(self, __arg1):
+    # type: (T1_tag) -> T1_tag
+    pass
+  @overload
   def add(self, *args):
+    # type: (T_tag) -> Union[T_tag, Tuple[T_tag, ...]]
+    pass
+  def add(self, *args):
+    # type: (T_tag) -> Union[T_tag, Tuple[T_tag, ...]]
     '''
     Add new child tags.
     '''
@@ -215,6 +253,7 @@ class dom_tag(object):
           self.set_attribute(*dom_tag.clean_pair(attr, value))
 
       elif hasattr(obj, '__iter__'):
+        obj = cast(Iterable[_T_tag], obj)
         for subobj in obj:
           self.add(subobj)
 
@@ -228,21 +267,33 @@ class dom_tag(object):
 
 
   def add_raw_string(self, s):
+    # type: (basestring) -> None
     self.children.append(s)
 
 
   def remove(self, obj):
+    # type: (Union[dom_tag, basestring]) -> None
     self.children.remove(obj)
 
 
   def clear(self):
+    # type: () -> None
     for i in self.children:
       if isinstance(i, dom_tag) and i.parent is self:
         i.parent = None
     self.children = []
 
 
+  @overload
+  def get(self, tag, **kwargs):
+    # type: (Type[basestring], Union[basestring, bool]) -> List[basestring]
+    pass
+  @overload
   def get(self, tag=None, **kwargs):
+    # type: (Optional[Union[Type[dom_tag], basestring]], Union[basestring, bool]) -> List[Union[dom_tag, basestring]]
+    pass
+  def get(self, tag=None, **kwargs):
+    # type: (Optional[Union[Type[basestring], Type[dom_tag], basestring]], Union[basestring, bool]) -> Union[List[basestring], List[Union[dom_tag, basestring]]]
     '''
     Recursively searches children for tags of a certain
     type with matching attributes.
@@ -258,7 +309,8 @@ class dom_tag(object):
       if (isinstance(tag, basestring) and type(child).__name__ == tag) or \
         (not isinstance(tag, basestring) and isinstance(child, tag)):
 
-        if all(child.attributes.get(attribute) == value
+        if isinstance(child, basestring) or \
+            all(child.attributes.get(attribute) == value
             for attribute, value in attrs):
           # If the child is of correct type and has all attributes and values
           # in kwargs add as a result
@@ -269,7 +321,16 @@ class dom_tag(object):
     return results
 
 
+  @overload
   def __getitem__(self, key):
+    # type: (int) -> Union[dom_tag, basestring]
+    pass
+  @overload
+  def __getitem__(self, key):
+    # type: (basestring) -> Union[basestring, Literal[False]]
+    pass
+  def __getitem__(self, key):
+    # type: (Union[int, basestring]) -> Union[dom_tag, basestring, Literal[False]]
     '''
     Returns the stored value of the specified attribute or child
     (if it exists).
@@ -277,13 +338,13 @@ class dom_tag(object):
     if isinstance(key, int):
       # Children are accessed using integers
       try:
-        return object.__getattribute__(self, 'children')[key]
+        return object.__getattribute__(self, 'children')[key]  # type: ignore[no-any-return]
       except KeyError:
         raise IndexError('Child with index "%s" does not exist.' % key)
     elif isinstance(key, basestring):
       # Attributes are accessed using strings
       try:
-        return object.__getattribute__(self, 'attributes')[key]
+        return object.__getattribute__(self, 'attributes')[key]  # type: ignore[no-any-return]
       except KeyError:
         raise AttributeError('Attribute "%s" does not exist.' % key)
     else:
@@ -293,6 +354,7 @@ class dom_tag(object):
 
 
   def __len__(self):
+    # type: () -> int
     '''
     Number of child elements.
     '''
@@ -300,6 +362,7 @@ class dom_tag(object):
 
 
   def __bool__(self):
+    # type: () -> bool
     '''
     Hack for "if x" and __len__
     '''
@@ -308,6 +371,7 @@ class dom_tag(object):
 
 
   def __iter__(self):
+    # type: () -> Iterator[Union[dom_tag, basestring]]
     '''
     Iterates over child elements.
     '''
@@ -315,6 +379,7 @@ class dom_tag(object):
 
 
   def __contains__(self, item):
+    # type: (Union[Type[dom_tag], basestring]) -> bool
     '''
     Checks recursively if item is in children tree.
     Accepts both a string and a class.
@@ -323,6 +388,7 @@ class dom_tag(object):
 
 
   def __iadd__(self, obj):
+    # type: (bool) -> dom_tag
     '''
     Reflexive binary addition simply adds tag as a child.
     '''
@@ -331,16 +397,19 @@ class dom_tag(object):
 
   # String and unicode representations are the same as render()
   def __unicode__(self):
+    # type: () -> basestring
     return self.render()
   __str__ = __unicode__
 
 
   def render(self, indent='  ', pretty=True, xhtml=False):
+    # type: (basestring, bool, bool) -> basestring
     data = self._render([], 0, indent, pretty, xhtml)
     return u''.join(data)
 
 
   def _render(self, sb, indent_level, indent_str, pretty, xhtml):
+    # type: (List[basestring], int, basestring, bool, bool) -> List[basestring]
     pretty = pretty and self.is_pretty
 
     name = getattr(self, 'tagname', type(self).__name__)
@@ -375,6 +444,7 @@ class dom_tag(object):
     return sb
 
   def _render_children(self, sb, indent_level, indent_str, pretty, xhtml):
+    # type: (List[basestring], int, basestring, bool, bool) -> bool
     inline = True
     for child in self.children:
       if isinstance(child, dom_tag):
@@ -390,6 +460,7 @@ class dom_tag(object):
 
 
   def __repr__(self):
+    # type: () -> basestring
     name = '%s.%s' % (self.__module__, type(self).__name__)
 
     attributes_len = len(self.attributes)
@@ -405,6 +476,7 @@ class dom_tag(object):
 
   @staticmethod
   def clean_attribute(attribute):
+    # type: (basestring) -> basestring
     '''
     Normalize attribute names for shorthand and work arounds for limitations
     in Python's syntax
@@ -438,6 +510,7 @@ class dom_tag(object):
 
   @classmethod
   def clean_pair(cls, attribute, value):
+    # type: (basestring, Union[basestring, bool]) -> Tuple[basestring, Union[basestring, Literal[False]]]
     '''
     This will call `clean_attribute` on the attribute and also allows for the
     creation of boolean attributes.
@@ -450,6 +523,7 @@ class dom_tag(object):
     # (i.e. selected=True becomes selected="selected")
     if value is True:
       value = attribute
+    value = cast(Union[basestring, Literal[False]], value)
 
     # Ignore `if value is False`: this is filtered out in render()
 
@@ -457,7 +531,20 @@ class dom_tag(object):
 
 
 _get_current_none = object()
+@overload
+def get_current(default):
+  # type: (dom_tag) -> dom_tag
+  pass
+@overload
+def get_current(default):
+  # type: (T) -> Union[dom_tag, T]
+  pass
+@overload
+def get_current():
+  # type: () -> dom_tag
+  pass
 def get_current(default=_get_current_none):
+  # type: (Any) -> Any
   '''
   get the current tag being used as a with context or decorated function.
   if no context is active, raises ValueError, or returns the default, if provided
@@ -472,6 +559,7 @@ def get_current(default=_get_current_none):
 
 
 def attr(*args, **kwargs):
+  # type: (basestring, Union[basestring, bool]) -> None
   '''
   Set attributes on the current active tag context
   '''
